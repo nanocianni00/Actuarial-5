@@ -1,0 +1,189 @@
+# ============================================================
+# EJERCICIO 1 — Forward sobre acción sin dividendos
+# ============================================================
+cat("═══ EJERCICIO 1 ════════════════════════════════════════\n\n")
+
+S0 <- 40; r <- 0.10; T <- 1.0
+
+# a) t=0
+F0 <- S0 * exp(r * T)
+cat("--- a) t = 0 ---\n")
+cat(sprintf("  F = S₀ × e^(r×T) = %g × e^(%.2f×%.0f) = $%.4f\n", S0, r, T, F0))
+cat("  Valor inicial del contrato = $0 (por definición de no-arbitraje)\n\n")
+
+# b) 6 meses después
+S1 <- 45; Tp <- 0.5
+F1  <- S1 * exp(r * Tp)
+V_long <- (F1 - F0) * exp(-r * Tp)
+
+cat("--- b) 6 meses después ---\n")
+cat(sprintf("  Nuevo F' = %g × e^(%.2f×%.1f) = $%.4f\n", S1, r, Tp, F1))
+cat(sprintf("  Valor LONG = (F'− F₀) × e^(−r×T') = (%.4f − %.4f) × e^(−%.2f×%.1f)\n",
+            F1, F0, r, Tp))
+cat(sprintf("  Valor LONG = $%.4f\n\n", V_long))
+
+
+# ============================================================
+# EJERCICIO 2 — Forward sobre moneda extranjera (bid-ask)
+# ============================================================
+cat("═══ EJERCICIO 2 ════════════════════════════════════════\n\n")
+
+TC_buy  <- 22.30; TC_sell <- 23.00
+rl_inv  <- 0.26;  rl_fin  <- 0.30
+rf_inv  <- 0.04;  rf_fin  <- 0.06
+
+# POSICIÓN LONG (IF compra ME a futuro)
+# IF se cubre: compra ME hoy al precio venta (23), financia en pesos al 30%, invierte en ME al 4%
+F_long  <- TC_sell * (1 + rl_fin) / (1 + rf_inv)
+
+# POSICIÓN SHORT (IF vende ME a futuro)
+# IF se cubre: vende ME hoy al precio compra (22.30), invierte pesos al 26%, pide ME al 6%
+F_short <- TC_buy  * (1 + rl_inv) / (1 + rf_fin)
+
+cat("--- Posición LONG (IF compra ME forward) ---\n")
+cat(sprintf("  F_long  = %.2f × (1+%.2f) / (1+%.2f) = %.4f\n",
+            TC_sell, rl_fin, rf_inv, F_long))
+cat("--- Posición SHORT (IF vende ME forward) ---\n")
+cat(sprintf("  F_short = %.2f × (1+%.2f) / (1+%.2f) = %.4f\n",
+            TC_buy, rl_inv, rf_fin, F_short))
+cat(sprintf("  Spread de la IF = %.4f\n\n", F_short - F_long))
+
+
+# ============================================================
+# EJERCICIO 3 — Forward con dividendo discreto
+# ============================================================
+cat("═══ EJERCICIO 3 ════════════════════════════════════════\n\n")
+
+S3  <- 150; D3 <- 10; td3 <- 9/12; r3 <- 0.12
+
+# a) Forward a 6 meses (dividendo en 9m > 6m → NO afecta)
+T3a    <- 6/12
+pvD3a  <- 0   # dividendo DESPUÉS del vencimiento → no entra
+F3a    <- (S3 - pvD3a) * exp(r3 * T3a)
+
+cat("--- a) Forward a 6 meses ---\n")
+cat("  El dividendo ocurre en 9m, DESPUÉS del vencimiento (6m)\n")
+cat("  → No se descuenta ningún dividendo del precio spot\n")
+cat(sprintf("  F = %g × e^(%.2f×%.2f) = $%.4f\n\n", S3, r3, T3a, F3a))
+
+# b) Arbitraje si mercado cotiza $165
+Fmkt3b <- 165
+ganancia3b <- Fmkt3b - F3a
+
+cat("--- b) Arbitraje (forward caro a $165) ---\n")
+cat(sprintf("  F justo = $%.4f, F mercado = $%.2f → CARO por $%.4f\n",
+            F3a, Fmkt3b, ganancia3b))
+cat("  Estrategia: VENDER forward caro + COMPRAR acción hoy (apalancado)\n")
+cat("  Operaciones:\n")
+cat(sprintf("    t=0:  Pedir prestado $%.2f al %.0f%% continuo por 6m\n", S3, r3*100))
+cat(sprintf("    t=0:  Comprar acción a $%.2f\n", S3))
+cat(sprintf("    t=0:  Vender forward a $%.2f\n", Fmkt3b))
+cat(sprintf("    t=6m: Entregar acción, cobrar $%.2f del forward\n", Fmkt3b))
+costo_prestamo3b <- S3 * exp(r3 * T3a)
+cat(sprintf("    t=6m: Repagar préstamo: $%.2f × e^(%.2f×%.2f) = $%.4f\n",
+            S3, r3, T3a, costo_prestamo3b))
+cat(sprintf("  GANANCIA = $%.2f − $%.4f = $%.4f\n\n", Fmkt3b, costo_prestamo3b, ganancia3b))
+
+# c) Forward a 12 meses (dividendo en 9m < 12m → SÍ afecta)
+T3c   <- 12/12
+pvD3c <- D3 * exp(-r3 * td3)
+F3c   <- (S3 - pvD3c) * exp(r3 * T3c)
+
+cat("--- c) Forward a 12 meses ---\n")
+cat("  El dividendo ocurre en 9m, ANTES del vencimiento (12m)\n")
+cat(sprintf("  PV dividendo = %g × e^(−%.2f×%.4f) = $%.4f\n", D3, r3, td3, pvD3c))
+cat(sprintf("  F = (%g − %.4f) × e^(%.2f×%.0f) = $%.4f\n\n",
+            S3, pvD3c, r3, T3c, F3c))
+
+# d) Arbitraje si mercado cotiza $160
+Fmkt3d <- 160
+ganancia3d <- Fmkt3d - F3c
+
+cat("--- d) Arbitraje (forward caro a $160) ---\n")
+cat(sprintf("  F justo = $%.4f, F mercado = $%.2f → CARO por $%.4f\n",
+            F3c, Fmkt3d, ganancia3d))
+cat("  Misma estrategia: vender forward + comprar acción con préstamo\n")
+cat("  El dividendo de $10 en t=9m se reinvierte hasta t=12m\n\n")
+
+
+# ============================================================
+# EJERCICIO 4 — Efectivo sintético (Chance)
+# ============================================================
+cat("═══ EJERCICIO 4 ════════════════════════════════════════\n\n")
+
+V4   <- 950e6; F4 <- 1564; mult4 <- 100
+q4   <- 0.0045; r4 <- 0.0575; T4 <- 0.5
+
+# a) NF
+unidades4 <- V4 / (F4 * mult4)
+NF4       <- round(unidades4 * exp(-q4 * T4))
+
+cat("--- a) Número de contratos NF ---\n")
+cat(sprintf("  Unidades de índice = %.2f M / (%.0f × %.0f) = %.2f\n",
+            V4/1e6, F4, mult4, unidades4))
+cat(sprintf("  Ajuste dividendos × e^(−q×T) = %.0f\n", unidades4 * exp(-q4*T4)))
+cat(sprintf("  NF = %d contratos (SHORT)\n\n", NF4))
+
+# b) Monto a TLR y acciones efectivas
+acc_eff4 <- NF4 * mult4 * exp(-q4 * T4)
+tlr4     <- NF4 * F4 * mult4 * exp(-r4 * T4)
+
+cat("--- b) Monto a TLR y acciones efectivas ---\n")
+cat(sprintf("  Acciones efectivas = %.2f\n", acc_eff4))
+cat(sprintf("  Monto a TLR = $%s\n\n", format(round(tlr4), big.mark=",")))
+
+# c) Verificación con índice=1735
+ST4      <- 1735
+val_acc4 <- acc_eff4 * ST4
+pnl_fut4 <- NF4 * (ST4 - F4) * mult4
+total4   <- val_acc4 + pnl_fut4
+tlr_cap4 <- tlr4 * exp(r4 * T4)
+
+cat("--- c) Verificación con S_T = 1735 ---\n")
+cat(sprintf("  Valor acciones convertidas: $%s\n", format(round(val_acc4), big.mark=",")))
+cat(sprintf("  P&L futuros: $%s\n", format(round(pnl_fut4), big.mark=",")))
+cat(sprintf("  Total: $%s\n", format(round(total4), big.mark=",")))
+cat(sprintf("  TLR capitalizado: $%s\n", format(round(tlr_cap4), big.mark=",")))
+cat(sprintf("  Diferencia (error de redondeo): $%s\n\n",
+            format(round(total4 - tlr_cap4), big.mark=",")))
+
+
+# ============================================================
+# EJERCICIO 5 — Cobertura beta con futuros (Hull)
+# ============================================================
+cat("═══ EJERCICIO 5 ════════════════════════════════════════\n\n")
+
+V5    <- 50e6; beta5 <- 0.87; beta_obj <- 0
+idx5  <- 1250; mult5 <- 250; F5 <- 1259
+
+N5 <- (beta_obj - beta5) * V5 / (F5 * mult5)
+N5_round <- round(N5)
+
+cat("--- Número de contratos ---\n")
+cat(sprintf("  N = (β_obj − β) × V / (F × Mult)\n"))
+cat(sprintf("  N = (%.2f − %.2f) × $%sM / (%.0f × %.0f)\n",
+            beta_obj, beta5, V5/1e6, F5, mult5))
+cat(sprintf("  N = %.2f → %d contratos\n", N5, N5_round))
+cat("  Posición SHORT (venta de futuros para cubrir)\n\n")
+cat("  Intuición: el fondo tiene beta=0.87 → sube/baja con el mercado.\n")
+cat("  Para neutralizarlo (beta=0), se venden futuros del índice.\n")
+cat("  Si el mercado cae, la ganancia en los futuros short compensa.\n\n")
+
+
+# ============================================================
+# EJERCICIO 6 — Forward con rendimiento porcentual continuo
+# ============================================================
+cat("═══ EJERCICIO 6 ════════════════════════════════════════\n\n")
+
+S6 <- 50; r6 <- 0.10; q6 <- 0.06; T6 <- 1.0
+
+F6 <- S6 * exp((r6 - q6) * T6)
+
+cat("--- Precio Forward con yield continuo ---\n")
+cat(sprintf("  F = S₀ × e^((r−q)×T)\n"))
+cat(sprintf("  F = %g × e^((%.2f−%.2f)×%.0f) = $%.4f\n", S6, r6, q6, T6, F6))
+cat("  Valor inicial = $0\n\n")
+cat("  El rendimiento q actúa como 'dividendo continuo':\n")
+cat("  reduce el costo neto de mantener el activo.\n")
+cat(sprintf("  Sin q: F = %g × e^%.2f = $%.4f\n", S6, r6, S6*exp(r6*T6)))
+cat(sprintf("  Con q: F = %g × e^%.2f = $%.4f (menor)\n", S6, r6-q6, F6))
