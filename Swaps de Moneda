@@ -1,0 +1,151 @@
+
+# ============================================================
+# EJERCICIO 1 — Swap fijo × fijo, pagos trimestrales
+# ============================================================
+cat("═══ EJERCICIO 1 ════════════════════════════════════════\n\n")
+
+# Datos
+nom_A  <- 1000       # nominal en moneda A
+tc0    <- 3.5        # TC al inicio: A/B
+tc1    <- 3.8        # TC hoy: A/B
+rA     <- 0.15       # tasa fija moneda A
+rB     <- 0.12       # tasa fija moneda B
+nom_B  <- nom_A / tc0
+
+cup_A  <- nom_A * rA / 4   # cupón trimestral en A
+cup_B  <- nom_B * rB / 4   # cupón trimestral en B
+
+cat(sprintf("Nominal A: %.0f | Nominal B: %.4f\n", nom_A, nom_B))
+cat(sprintf("Cupón trimestral A: %.4f | B: %.4f\n\n", cup_A, cup_B))
+
+# Precios ZC por 100 de VN
+precios_A <- c(98.89,97.75,96.58,95.39,94.17,92.93,91.67,90.39,89.09,87.77,86.44,85.09)
+precios_B <- c(99.17,98.31,97.42,96.50,95.54,94.56,93.54,92.50,91.43,90.34,89.23,88.09)
+d_A <- precios_A / 100
+d_B <- precios_B / 100
+
+# Pagos restantes: hace 1 mes se firmó → trimestres en meses 1, 4, 7, 10
+pay_months <- c(1, 4, 7, 10)
+
+flujos_A <- rep(cup_A, 4); flujos_A[4] <- flujos_A[4] + nom_A
+flujos_B <- rep(cup_B, 4); flujos_B[4] <- flujos_B[4] + nom_B
+
+pv_A <- sum(flujos_A * d_A[pay_months])
+pv_B <- sum(flujos_B * d_B[pay_months])
+pv_B_en_A <- pv_B * tc1
+
+valor_swap1 <- pv_B_en_A - pv_A
+
+cat("--- Flujos descontados ---\n")
+tabla1 <- data.frame(
+  Mes      = pay_months,
+  Flujo_A  = round(flujos_A, 4),
+  d_A      = round(d_A[pay_months], 6),
+  PV_A     = round(flujos_A * d_A[pay_months], 4),
+  Flujo_B  = round(flujos_B, 4),
+  d_B      = round(d_B[pay_months], 6),
+  PV_B     = round(flujos_B * d_B[pay_months], 4)
+)
+print(tabla1, row.names=FALSE)
+
+cat(sprintf("\nPV pagos en A          : %.4f\n", pv_A))
+cat(sprintf("PV cobros en B (en B)  : %.4f\n", pv_B))
+cat(sprintf("PV cobros en B (en A)  : %.4f  (× TC=%.1f)\n", pv_B_en_A, tc1))
+cat(sprintf("VALOR DEL SWAP (paga A): %.4f\n\n", valor_swap1))
+
+
+# ============================================================
+# EJERCICIO 2 — Swap divisas Hull: £20M × $30M, 15 meses
+# ============================================================
+cat("═══ EJERCICIO 2 ════════════════════════════════════════\n\n")
+
+nom_GBP <- 20e6; nom_USD <- 30e6
+r_cup_GBP <- 0.10; r_cup_USD <- 0.06
+r_mkt_GBP <- 0.07; r_mkt_USD <- 0.04
+tc2 <- 1.85  # USD/GBP
+
+cup_GBP2 <- nom_GBP * r_cup_GBP   # $2M anual
+cup_USD2 <- nom_USD * r_cup_USD   # $1.8M anual
+
+# Pagos restantes: 3 meses (0.25 años) y 15 meses (1.25 años)
+tiempos2 <- c(0.25, 1.25)
+flujos_USD2 <- c(cup_USD2, cup_USD2 + nom_USD)
+flujos_GBP2 <- c(cup_GBP2, cup_GBP2 + nom_GBP)
+
+# FDs con tasa discreta anual
+d_USD2 <- 1 / (1 + r_mkt_USD)^tiempos2
+d_GBP2 <- 1 / (1 + r_mkt_GBP)^tiempos2
+
+pv_USD2 <- sum(flujos_USD2 * d_USD2)
+pv_GBP2 <- sum(flujos_GBP2 * d_GBP2)
+pv_GBP_en_USD <- pv_GBP2 * tc2
+
+cat("--- Flujos descontados ---\n")
+tabla2 <- data.frame(
+  t_años   = tiempos2,
+  Flujo_USD = format(round(flujos_USD2,2), big.mark=","),
+  d_USD    = round(d_USD2, 6),
+  PV_USD   = format(round(flujos_USD2*d_USD2,2), big.mark=","),
+  Flujo_GBP = format(round(flujos_GBP2,2), big.mark=","),
+  d_GBP    = round(d_GBP2, 6),
+  PV_GBP   = format(round(flujos_GBP2*d_GBP2,2), big.mark=",")
+)
+print(tabla2, row.names=FALSE)
+
+cat(sprintf("\nPV USD (recibe pagador GBP): $%s M\n",
+            format(round(pv_USD2/1e6,4))))
+cat(sprintf("PV GBP en USD (× %.2f)    : $%s M\n",
+            tc2, format(round(pv_GBP_en_USD/1e6,4))))
+cat(sprintf("Valor swap PAGADOR GBP    : $%s M\n",
+            format(round((pv_USD2 - pv_GBP_en_USD)/1e6, 4))))
+cat(sprintf("Valor swap PAGADOR USD    : $%s M  ← ~8.9763\n\n",
+            format(round((pv_GBP_en_USD - pv_USD2)/1e6, 4))))
+
+
+# ============================================================
+# EJERCICIO 3 — Ventaja comparativa
+# ============================================================
+cat("═══ EJERCICIO 3 ════════════════════════════════════════\n\n")
+
+rA_jpy <- 0.050; rA_usd <- 0.096
+rB_jpy <- 0.065; rB_usd <- 0.100
+banco  <- 0.005  # 50 bps para el banco
+
+diff_jpy   <- rB_jpy - rA_jpy   # A ventaja en JPY: 1.5%
+diff_usd   <- rB_usd - rA_usd   # A ventaja en USD: 0.4%
+gain_total <- diff_jpy - diff_usd  # ganancia total: 1.1%
+each_gain  <- (gain_total - banco) / 2  # 0.3% para cada empresa
+
+cat("--- Ventaja comparativa ---\n")
+cat(sprintf("Diferencia JPY (B−A)  : %.2f%%\n", diff_jpy*100))
+cat(sprintf("Diferencia USD (B−A)  : %.2f%%\n", diff_usd*100))
+cat(sprintf("Ganancia total        : %.2f%%\n", gain_total*100))
+cat(sprintf("Para el banco         : %.2f%%\n", banco*100))
+cat(sprintf("Para cada empresa     : %.2f%%\n\n", each_gain*100))
+
+# A pide prestado JPY (su ventaja) y swapea a USD
+# B pide prestado USD (su ventaja relativa menor) y swapea a JPY
+a_costo_usd_swap <- rA_usd - each_gain  # 9.3%
+b_costo_jpy_swap <- rB_jpy - each_gain  # 6.2%
+
+cat("--- Resultado para cada parte ---\n")
+cat(sprintf("A: quería USD, con swap paga %.2f%% USD (vs %.2f%% directo → ahorra %.2f%%)\n",
+            a_costo_usd_swap*100, rA_usd*100, each_gain*100))
+cat(sprintf("B: quería JPY, con swap paga %.2f%% JPY (vs %.2f%% directo → ahorra %.2f%%)\n",
+            b_costo_jpy_swap*100, rB_jpy*100, each_gain*100))
+cat(sprintf("Banco: gana %.2f%% (asume riesgo cambiario)\n\n", banco*100))
+
+cat("--- Flujos del swap ---\n")
+cat("  A pide JPY al 5%, entra en swap:\n")
+cat(sprintf("    → Paga al banco: %.2f%% USD\n", a_costo_usd_swap*100))
+cat("    → Recibe del banco: 5% JPY (cancela su préstamo)\n")
+cat("  B pide USD al 10%, entra en swap:\n")
+cat(sprintf("    → Paga al banco: %.2f%% JPY\n", b_costo_jpy_swap*100))
+cat("    → Recibe del banco: 10% USD (cancela su préstamo)\n")
+cat("  Banco:\n")
+cat(sprintf("    → Recibe %.2f%% USD de A, paga 10%% USD a B → pierde %.2f%% USD\n",
+            a_costo_usd_swap*100, (rB_usd - a_costo_usd_swap)*100))
+cat(sprintf("    → Recibe %.2f%% JPY de B, paga 5%% JPY a A → gana %.2f%% JPY\n",
+            b_costo_jpy_swap*100, (b_costo_jpy_swap - rA_jpy)*100))
+cat(sprintf("    → Ganancia neta: %.2f%% (asumiendo TC neutro)\n\n", banco*100))
+
