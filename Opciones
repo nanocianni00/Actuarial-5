@@ -1,0 +1,363 @@
+
+# ── Función núcleo ────────────────────────────────────────────
+binomial_option <- function(
+    S0, K, u, d, FC, n_steps = 1,
+    type = "call",       # "call" o "put"
+    style = "european",  # "european" o "american"
+    verbose = TRUE
+) {
+  # type: payoff multiplier
+  phi_sign <- ifelse(type == "call", 1, -1)
+
+  # PRN
+  prn <- (FC - d) / (u - d)
+  FD  <- 1 / FC
+
+  if (verbose) {
+    cat(sprintf("  u=%.6f  d=%.6f  FC=%.6f  FD=%.6f\n", u, d, FC, FD))
+    cat(sprintf("  PRN=%.6f  1-PRN=%.6f\n", prn, 1-prn))
+    cat(sprintf("  Cond. no-arb: d<FC<u: %s\n\n", ifelse(d<FC & FC<u,"✓ OK","✗ VIOLADA")))
+  }
+
+  # Construir árbol de precios
+  S_tree <- matrix(0, nrow=n_steps+1, ncol=n_steps+1)
+  for (j in 0:n_steps)
+    for (i in 0:j)
+      S_tree[i+1, j+1] <- S0 * u^(j-i) * d^i
+
+  # Árbol de valores de opción (backward induction)
+  V_tree <- matrix(0, nrow=n_steps+1, ncol=n_steps+1)
+  # Nodos terminales
+  for (i in 0:n_steps)
+    V_tree[i+1, n_steps+1] <- max(phi_sign * (S_tree[i+1, n_steps+1] - K), 0)
+
+  # Retroceso
+  for (j in (n_steps-1):0) {
+    for (i in 0:j) {
+      cont  <- FD * (prn * V_tree[i+1, j+2] + (1-prn) * V_tree[i+2, j+2])
+      intri <- max(phi_sign * (S_tree[i+1, j+1] - K), 0)
+      if (style == "american")
+        V_tree[i+1, j+1] <- max(cont, intri)
+      else
+        V_tree[i+1, j+1] <- cont
+    }
+  }
+
+  if (verbose && n_steps <= 3) {
+    cat("  Árbol de precios S:\n")
+    for (j in 0:n_steps) {
+      for (i in 0:j)
+        cat(sprintf("    S[%d,%d]=%.4f", i, j, S_tree[i+1,j+1]))
+      cat("\n")
+    }
+    cat("\n  Árbol de valores opción:\n")
+    for (j in 0:n_steps) {
+      for (i in 0:j)
+        cat(sprintf("    V[%d,%d]=%.6f", i, j, V_tree[i+1,j+1]))
+      cat("\n")
+    }
+    cat("\n")
+  }
+
+  # Cartera replicante en t=0 (1-paso) o por nodo (2-pasos)
+  if (n_steps == 1) {
+    Cu <- V_tree[1,2]; Cd <- V_tree[2,2]
+    Su <- S_tree[1,2]; Sd <- S_tree[2,2]
+    delta <- (Cu - Cd) / (Su - Sd)
+    bond  <- (Cu - delta * Su) / FC
+    if (verbose) {
+      cat(sprintf("  Cartera replicante:\n"))
+      cat(sprintf("    Δ = %.6f\n    φ = %.6f\n", delta, bond))
+      cat(sprintf("    Verificación: Δ×S₀ + φ = %.6f\n\n", delta*S0 + bond))
+    }
+  }
+
+  invisible(list(prima=V_tree[1,1], S_tree=S_tree, V_tree=V_tree, prn=prn, FD=FD))
+}
+
+# ── Función FC según convención de tasa ───────────────────────
+calc_FC <- function(r, dt, conv = "continua") {
+  switch(conv,
+    "continua"  = exp(r * dt),
+    "TEA"       = (1 + r)^dt,
+    "TNA_semi"  = (1 + r/2)^(dt * 2),
+    "TNA_tri"   = (1 + r/4)^(dt * 4),
+    "TNA_bi"    = (1 + r/6)^(dt * 6),
+    stop("Convención desconocida"))
+}
+
+# ── Parámetros CRR ────────────────────────────────────────────
+crr_params <- function(sigma, r, dt, conv = "continua") {
+  u  <- exp(sigma * sqrt(dt))
+  d  <- 1/u
+  FC <- calc_FC(r, dt, conv)
+  prn <- (FC - d) / (u - d)
+  list(u=u, d=d, FC=FC, FD=1/FC, prn=prn)
+}
+
+# ── Arbitraje ─────────────────────────────────────────────────
+arbitraje <- function(prima_teo, prima_mkt, S0, delta, bond, FC,
+                      Su, Sd, Cu, Cd, type="call") {
+  cat(sprintf("\n  Prima teórica = %.6f | Prima mercado = %.6f\n", prima_teo, prima_mkt))
+  if (abs(prima_mkt - prima_teo) < 1e-6) { cat("  Sin arbitraje.\n"); return(invisible()) }
+
+  if (prima_mkt > prima_teo) {
+    cat("  Opción CARA → VENDER opción + cartera replicante\n")
+    cat(sprintf("  Hoy: Vender opción (+%.4f), Comprar %.4f acciones (-%.4f), Pedir %.4f (-%.4f)\n",
+                prima_mkt, delta, delta*S0, bond, bond))
+    cat(sprintf("  Ganancia hoy: %.6f\n", prima_mkt - prima_teo))
+    cat(sprintf("  Estado Up (S=%.4f): pagar opción %.4f, cartera vale %.4f → neto=%.6f\n",
+                Su, Cu, delta*Su + bond*FC, delta*Su + bond*FC - Cu))
+    cat(sprintf("  Estado Down(S=%.4f): pagar opción %.4f, cartera vale %.4f → neto=%.6f\n",
+                Sd, Cd, delta*Sd + bond*FC, delta*Sd + bond*FC - Cd))
+  } else {
+    cat("  Opción BARATA → COMPRAR opción + posición inversa\n")
+    cat(sprintf("  Ganancia hoy: %.6f\n", prima_teo - prima_mkt))
+  }
+}
+
+cat("╔══════════════════════════════════════════════════════╗\n")
+cat("║     GUÍA MODELO BINOMIAL — RESOLUCIÓN COMPLETA       ║\n")
+cat("╚══════════════════════════════════════════════════════╝\n\n")
+
+# ============================================================
+# EJERCICIO 1 — Call, 1 paso, TEA 5%, u=1.10, d=0.90, K=100
+# ============================================================
+cat("══ EJ1 — Call europeo, 1 paso, TEA ════════════════════\n")
+S0=100; K=100; u=1.10; d=0.90; r=0.05; T=1; conv="TEA"
+FC <- calc_FC(r, T, conv)
+res1 <- binomial_option(S0, K, u, d, FC, n_steps=1, type="call")
+cat(sprintf("  PRIMA = %.6f\n\n", res1$prima))
+
+# Arbitraje: prima mercado = 9
+cat("  Arbitraje (prima mercado = 9):\n")
+Cu1=res1$V_tree[1,2]; Cd1=res1$V_tree[2,2]
+Su1=S0*u; Sd1=S0*d
+delta1=(Cu1-Cd1)/(Su1-Sd1)
+bond1=(Cu1-delta1*Su1)/FC
+arbitraje(res1$prima, 9, S0, delta1, bond1, FC, Su1, Sd1, Cu1, Cd1)
+
+# ============================================================
+# EJERCICIO 2 — Put, 1 paso, TNA_semi 6%, u=1.25, d=0.80
+# ============================================================
+cat("══ EJ2 — Put europeo, 1 paso, TNA cap semi ════════════\n")
+S0=50; K=55; u=1.25; d=0.80; r=0.06; dt=0.5; conv="TNA_semi"
+FC <- calc_FC(r, dt, conv)
+res2 <- binomial_option(S0, K, u, d, FC, n_steps=1, type="put")
+cat(sprintf("  PRIMA = %.6f\n\n", res2$prima))
+
+# ============================================================
+# EJERCICIO 3 — Call CRR, 1 paso, continua 4%, sigma=30%
+# ============================================================
+cat("══ EJ3 — Call CRR, 1 paso, tasa continua ══════════════\n")
+S0=40; K=42; sigma=0.30; r=0.04; dt=3/12; conv="continua"
+p3 <- crr_params(sigma, r, dt, conv)
+cat(sprintf("  CRR: u=%.6f  d=%.6f\n", p3$u, p3$d))
+res3 <- binomial_option(S0, K, p3$u, p3$d, p3$FC, n_steps=1, type="call")
+cat(sprintf("  PRIMA = %.6f\n\n", res3$prima))
+
+# ============================================================
+# EJERCICIO 4 — Put CRR, 1 paso, TEA 2%, sigma=25%, 1 mes
+# ============================================================
+cat("══ EJ4 — Put CRR, 1 paso, TEA ═════════════════════════\n")
+S0=80; K=78; sigma=0.25; r=0.02; dt=1/12; conv="TEA"
+p4 <- crr_params(sigma, r, dt, conv)
+FC4 <- calc_FC(r, dt, conv)
+res4 <- binomial_option(S0, K, p4$u, p4$d, FC4, n_steps=1, type="put")
+cat(sprintf("  PRIMA = %.6f\n\n", res4$prima))
+
+# ============================================================
+# EJERCICIO 5 — Call, 2 pasos, TNA_semi 8%
+# ============================================================
+cat("══ EJ5 — Call europeo, 2 pasos, TNA semi ═══════════════\n")
+S0=100; K=105; u=1.20; d=0.90; r=0.08; dt=0.5; conv="TNA_semi"
+FC5 <- calc_FC(r, dt, conv)
+res5 <- binomial_option(S0, K, u, d, FC5, n_steps=2, type="call")
+cat(sprintf("  PRIMA = %.6f\n\n", res5$prima))
+
+# Cartera replicante por nodo manual
+prn5 <- (FC5-d)/(u-d)
+Suu5=S0*u^2; Sud5=S0*u*d; Sdd5=S0*d^2; Su5=S0*u; Sd5=S0*d
+Cuu5=max(Suu5-K,0); Cud5=max(Sud5-K,0); Cdd5=max(Sdd5-K,0)
+Cu5=res5$V_tree[1,2]; Cd5=res5$V_tree[2,2]
+# t=0
+delta0_5=(Cu5-Cd5)/(Su5-Sd5)
+phi0_5=(Cu5-delta0_5*Su5)/FC5
+cat(sprintf("  t=0: Δ=%.6f  φ=%.6f\n", delta0_5, phi0_5))
+# Nodo Up
+delta_u5=(Cuu5-Cud5)/(Suu5-Sud5)
+phi_u5=(Cuu5-delta_u5*Suu5)/FC5
+cat(sprintf("  t=0.5 Up:   Δ=%.6f  φ=%.6f\n", delta_u5, phi_u5))
+# Nodo Down
+delta_d5=(Cud5-Cdd5)/(Sud5-Sdd5)
+phi_d5=(Cud5-delta_d5*Sud5)/FC5
+cat(sprintf("  t=0.5 Down: Δ=%.6f  φ=%.6f\n\n", delta_d5, phi_d5))
+
+# ============================================================
+# EJERCICIO 6 — Put, 2 pasos, TEA 6%
+# ============================================================
+cat("══ EJ6 — Put europeo, 2 pasos, TEA ════════════════════\n")
+S0=60; K=62; u=1.15; d=0.88; r=0.06; dt=3/12; conv="TEA"
+FC6 <- calc_FC(r, dt, conv)
+res6 <- binomial_option(S0, K, u, d, FC6, n_steps=2, type="put")
+cat(sprintf("  PRIMA = %.6f\n\n", res6$prima))
+
+# ============================================================
+# EJERCICIO 7 — Call americano CRR, 2 pasos, continua 4%
+# ============================================================
+cat("══ EJ7 — Call AMERICANO CRR, 2 pasos ══════════════════\n")
+S0=50; K=52; sigma=0.25; r=0.04; dt=0.5; conv="continua"
+p7 <- crr_params(sigma, r, dt, conv)
+cat(sprintf("  CRR: u=%.6f  d=%.6f\n", p7$u, p7$d))
+res7_eu <- binomial_option(S0, K, p7$u, p7$d, p7$FC, n_steps=2, type="call", style="european", verbose=FALSE)
+res7_am <- binomial_option(S0, K, p7$u, p7$d, p7$FC, n_steps=2, type="call", style="american", verbose=FALSE)
+cat(sprintf("  Prima EUROPEA = %.6f\n", res7_eu$prima))
+cat(sprintf("  Prima AMERICANA = %.6f\n", res7_am$prima))
+cat(sprintf("  Prima por ejercicio anticipado = %.6f\n\n", res7_am$prima - res7_eu$prima))
+cat("  Para calls sobre acciones sin dividendo: ejercicio anticipado no óptimo\n")
+cat("  Prima americana = europea (confirma la teoría)\n\n")
+
+# ============================================================
+# EJERCICIO 8 — Put, árbol NO RECOMBINANTE
+# ============================================================
+cat("══ EJ8 — Put, árbol NO recombinante ═══════════════════\n")
+S0=100; K=100; r=0.05; dt=0.5; conv="TEA"
+u1=1.20; d1=0.85
+# Desde Up: u2U=1.10, d2U=0.90
+u2U=1.10; d2U=0.90
+# Desde Down: u2D=1.30, d2D=0.80
+u2D=1.30; d2D=0.80
+
+FC8 <- calc_FC(r, dt, conv)
+Suu8=S0*u1*u2U; Sud8=S0*u1*d2U
+Sdu8=S0*d1*u2D; Sdd8=S0*d1*d2D
+
+cat(sprintf("  Árbol (no recombina):\n"))
+cat(sprintf("    S0=%.0f  Su=%.0f  Sd=%.0f\n", S0, S0*u1, S0*d1))
+cat(sprintf("    Suu=%.0f  Sud=%.0f  Sdu=%.0f  Sdd=%.0f\n", Suu8,Sud8,Sdu8,Sdd8))
+
+Puu8=max(K-Suu8,0); Pud8=max(K-Sud8,0)
+Pdu8=max(K-Sdu8,0); Pdd8=max(K-Sdd8,0)
+cat(sprintf("  Payoffs: Puu=%.0f Pud=%.0f Pdu=%.0f Pdd=%.0f\n",Puu8,Pud8,Pdu8,Pdd8))
+
+# PRN por nodo
+prnU8=(FC8-d2U)/(u2U-d2U)
+prnD8=(FC8-d2D)/(u2D-d2D)
+prn08=(FC8-d1)/(u1-d1)
+cat(sprintf("  PRN0=%.6f  PRN_U=%.6f  PRN_D=%.6f\n", prn08, prnU8, prnD8))
+
+Pu8  <- (1/FC8)*(prnU8*Puu8 + (1-prnU8)*Pud8)
+Pd8  <- (1/FC8)*(prnD8*Pdu8 + (1-prnD8)*Pdd8)
+P08  <- (1/FC8)*(prn08*Pu8  + (1-prn08)*Pd8)
+cat(sprintf("  Pu=%.6f  Pd=%.6f\n  PRIMA=%.6f\n\n", Pu8, Pd8, P08))
+
+# ============================================================
+# EJERCICIO 9 — Probabilidad mundo real vs riesgo-neutral
+# ============================================================
+cat("══ EJ9 — Prob. mundo real vs riesgo-neutral ════════════\n")
+S0=100; Su=130; Sd=80; K=100; r=0.05; p_real=0.60
+FC9 <- 1+r
+Cu9=max(Su-K,0); Cd9=max(Sd-K,0)
+
+# a) Rendimiento esperado bajo P
+E_S <- p_real*Su + (1-p_real)*Sd
+rend_esp <- E_S/S0 - 1
+cat(sprintf("  a) E[S_T] = %.0f  Rendimiento esperado = %.2f%%\n\n", E_S, rend_esp*100))
+
+# b) Valor esperado descontado bajo P (incorrecto)
+E_call <- p_real*Cu9 + (1-p_real)*Cd9
+VED_call <- E_call / FC9
+cat(sprintf("  b) E[C] bajo P = %.6f → VED = %.6f\n", E_call, VED_call))
+cat("     INCORRECTO: usa la tasa libre de riesgo para descontar flujos de riesgo.\n")
+cat("     El call tiene más riesgo que el bono → necesita mayor tasa de descuento.\n\n")
+
+# c) PRN
+prn9 <- (FC9 - Sd/S0) / (Su/S0 - Sd/S0)
+prn9b <- (FC9*S0 - Sd) / (Su - Sd)
+cat(sprintf("  c) PRN = (FC-d)/(u-d) = %.6f\n", prn9b))
+prima9 <- (prn9b*Cu9 + (1-prn9b)*Cd9) / FC9
+cat(sprintf("     Prima = %.6f\n\n", prima9))
+
+# ============================================================
+# EJERCICIO 10 — No arbitraje violado (PRN fuera de [0,1])
+# ============================================================
+cat("══ EJ10 — Verificación condición de no-arbitraje ════════\n")
+S0=100; Su=120; Sd=95; K=100; r=0.25
+FC10 <- 1+r
+u10=Su/S0; d10=Sd/S0
+prn10 <- (FC10-d10)/(u10-d10)
+cat(sprintf("  u=%.2f  d=%.2f  FC=%.2f\n", u10, d10, FC10))
+cat(sprintf("  PRN = (%.2f-%.2f)/(%.2f-%.2f) = %.4f\n", FC10, d10, u10, d10, prn10))
+cat(sprintf("  PRN > 1 → VIOLACIÓN: la tasa libre de riesgo (%.0f%%) supera el retorno del activo\n", r*100))
+cat("  → La condición d < FC < u NO SE CUMPLE (FC > u)\n")
+cat("  → Arbitraje: vender el bono (que rinde más que el activo) y comprar la acción\n\n")
+
+# ============================================================
+# EXAMEN 2025/10/09 — Put CRR 2 pasos, S0=20, K=21, 4 meses
+# ============================================================
+cat("══ EXAMEN OCT-2025 — Put CRR, 2 pasos, 4 meses ════════\n")
+S0=20; K=21; sigma=0.20; r=0.05; T_total=4/12; n=2; conv="continua"
+dt_ex <- T_total/n
+p_ex <- crr_params(sigma, r, dt_ex, conv)
+cat(sprintf("  u=%.6f  d=%.6f  FC=%.6f  PRN=%.6f\n", p_ex$u, p_ex$d, p_ex$FC, p_ex$prn))
+res_ex <- binomial_option(S0, K, p_ex$u, p_ex$d, p_ex$FC, n_steps=2, type="put")
+cat(sprintf("  PRIMA (2 pasos) = %.6f\n\n", res_ex$prima))
+
+# 50 pasos
+res_ex50 <- binomial_option(S0, K, p_ex$u^(1/25), 1/p_ex$u^(1/25),
+                             calc_FC(r, T_total/50, conv), n_steps=50,
+                             type="put", verbose=FALSE)
+cat(sprintf("  PRIMA (50 pasos) = %.6f\n\n", res_ex50$prima))
+
+# Arbitraje camino Down-Up (prima mercado = 1.50)
+cat("  Arbitraje camino Down-Up (prima mkt=$1.50 > prima teo=%.4f):\n", res_ex$prima)
+cat("  Opción CARA → VENDER put + cartera replicante\n")
+Sd_ex=S0*p_ex$d; Su_ex=S0*p_ex$u
+Sdu_ex=Sd_ex*p_ex$u; Sdd_ex=Sd_ex*p_ex$d
+Pdd_ex=max(K-Sdd_ex,0); Pdu_ex=max(K-Sdu_ex,0)
+Pd_ex=res_ex$V_tree[2,2]
+delta_d_ex=(Pdu_ex-Pdd_ex)/(Sdu_ex-Sdd_ex)
+phi_d_ex=(Pdu_ex-delta_d_ex*Sdu_ex)/p_ex$FC
+cat(sprintf("  t=0: Vender put +$1.50, posición en acción y bono\n"))
+cat(sprintf("  t=Δt (Down,S=%.4f): rebalancear Δ=%.4f φ=%.4f\n", Sd_ex, delta_d_ex, phi_d_ex))
+cat(sprintf("  t=T (Down-Up,S=%.4f): Pdu=%.4f, cartera=%.4f\n", Sdu_ex, Pdu_ex,
+            delta_d_ex*Sdu_ex + phi_d_ex*p_ex$FC))
+
+# ============================================================
+# GUÍA 4.1 — ESTRATEGIAS AL VENCIMIENTO
+# ============================================================
+cat("\n══ GUÍA 4.1 — ESTRATEGIAS ══════════════════════════════\n\n")
+
+# Datos ejercicio 1
+K_calls <- c(30, 35, 40); pr_calls <- c(3.00, 1.50, 0.75)
+K_puts  <- c(30, 35, 40); pr_puts  <- c(1.75, 2.50, 5.00)
+
+S_vec <- seq(20, 50, by=1)
+
+# a) Bull Spread Call: long Call_1 (K=30), short Call_2 (K=35)
+payoff_bull_call <- function(S, K1, K2, p1, p2)
+  pmax(S-K1,0) - pmax(S-K2,0) - p1 + p2
+
+# c) Bear Spread Call: short Call_2, long Call_3
+payoff_bear_call <- function(S, K2, K3, p2, p3)
+  -pmax(S-K2,0) + pmax(S-K3,0) + p2 - p3
+
+cat("  Bull Spread Call (K=30 long, K=35 short):\n")
+cat("  Payoff neto máx:", max(pmax(S_vec-30,0)-pmax(S_vec-35,0)), "\n")
+cat("  Costo neto (prima pagada-cobrada):", pr_calls[1]-pr_calls[2], "\n")
+cat("  Breakeven: K1 + costo =", 30 + (pr_calls[1]-pr_calls[2]), "\n\n")
+
+cat("  Bear Spread Put (K=35 long, K=30 short):\n")
+cost_bear_put <- pr_puts[2] - pr_puts[1]
+cat("  Costo neto:", cost_bear_put, "\n")
+cat("  Ganancia máxima:", 35-30-cost_bear_put, "\n\n")
+
+# g) Arbitraje: Call_1, S=33, T=3m, r=12% (precio mínimo)
+S=33; T_arb=3/12; r_arb=0.12
+precio_min_call1 <- max(S - K_calls[1]*exp(-r_arb*T_arb), 0)
+cat(sprintf("  g) Precio mínimo Call_1 = max(S - K×e^(-rT), 0) = max(%.4f, 0) = %.4f\n",
+            S - K_calls[1]*exp(-r_arb*T_arb), precio_min_call1))
+cat(sprintf("     Prima de mercado = %.2f < mínimo teórico %.4f → ARBITRAJE\n",
+            pr_calls[1], precio_min_call1))
+cat(sprintf("     Estrategia: comprar call + vender bono + comprar acciones\n\n"))
+
