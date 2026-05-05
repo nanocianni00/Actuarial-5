@@ -1,0 +1,310 @@
+
+# ============================================================
+# EJERCICIO 1 — Tasas TEA: 6%, 7%, 8.75%, 9% (6,12,18,24m)
+# ============================================================
+cat("═══ EJERCICIO 1 — Tasas TEA ═══════════════════════════\n\n")
+
+# Datos
+spots_tea <- c(s6=0.06, s12=0.07, s18=0.0875, s24=0.09)
+meses_tea <- c(6, 12, 18, 24)
+
+# Factores de descuento: d(t) = 1/(1+s_TEA)^(t/12)
+fd_tea <- 1 / (1 + spots_tea)^(meses_tea/12)
+names(fd_tea) <- paste0("d", meses_tea, "m")
+
+cat("--- Factores de Descuento ---\n")
+print(round(fd_tea, 6))
+
+# --- a) Forward 12→18 meses ---
+# (1 + f_6m_eff) = (1+s18)^1.5 / (1+s12)^1
+f_eff_1 <- (1 + spots_tea["s18"])^(18/12) / (1 + spots_tea["s12"])^(12/12) - 1
+tna_fwd1 <- f_eff_1 * 2  # TNA cap semestral
+
+cat("\n--- a) Tasa Forward 12→18m ---\n")
+cat(sprintf("  Tasa efectiva 6m del forward : %.4f%%\n", f_eff_1*100))
+cat(sprintf("  TNA cap. semestral           : %.4f%%\n", tna_fwd1*100))
+
+# --- b) Valor del FRA (recibe mercado, paga 10% TNA) ---
+nocional1 <- 1e6 #Es l número, sería 1.000.000
+r_fra1    <- 0.10 / 2   # tasa efectiva pactada por 6m
+
+flujo_fra1 <- (f_eff_1 - r_fra1) * nocional1  # en t=18m
+valor_fra1  <- flujo_fra1 * fd_tea["d18m"]
+
+cat("\n--- b) Valor del FRA ---\n")
+cat(sprintf("  Tasa de mercado (eff 6m) : %.2f%%\n", f_eff_1*100))
+cat(sprintf("  Tasa pactada   (eff 6m) : %.2f%%\n", r_fra1*100))
+cat(sprintf("  Flujo en t=18m          : $%s\n", format(round(flujo_fra1,2), big.mark=",")))
+cat(sprintf("  Valor FRA hoy           : $%s\n", format(round(valor_fra1,2), big.mark=",")))
+
+# --- c) Arbitraje ---
+# Principal A tal que A*(1+s12) = Nocional
+A1 <- nocional1 / (1 + spots_tea["s12"])
+
+ganancia_t18 <- (f_eff_1 - r_fra1) * nocional1
+pv_ganancia1 <- ganancia_t18 * fd_tea["d18m"]
+
+cat("\n--- c) Arbitraje ---\n")
+cat(sprintf("  Operaciones en t=0:\n"))
+cat(sprintf("    Pedir prestado $%s por 12m al 7%% TEA\n", format(round(A1,2), big.mark=",")))
+cat(sprintf("    Invertir       $%s por 18m al 8.75%% TEA\n", format(round(A1,2), big.mark=",")))
+cat(sprintf("  En t=12m: recibir $1M, prestar al mercado por 6m\n"))
+cat(sprintf("  Ganancia risk-free en t=18m: $%s\n", format(round(ganancia_t18,2), big.mark=",")))
+cat(sprintf("  PV de la ganancia hoy      : $%s\n", format(round(pv_ganancia1,2), big.mark=",")))
+
+# --- d) V/F ---
+cat("\n--- d) FALSO ---\n")
+cat("  La valuación se basa en NO-ARBITRAJE, no en E[spot].\n")
+cat("  La forward puede diferir del E[spot] por primas de liquidez.\n\n")
+
+
+# ============================================================
+# EJERCICIO 2 — Tasas TNA cap semestral: 4%, 4.5%, 4.75%, 5%
+# ============================================================
+cat("═══ EJERCICIO 2 — Tasas TNA cap. semestral ════════════\n\n")
+
+spots_tna <- c(s6=0.04, s12=0.045, s18=0.0475, s24=0.05)
+meses2    <- c(6, 12, 18, 24)
+
+# Tasa efectiva por 6m = TNA/2
+# FD = 1/(1+TNA/2)^(meses/6)
+fd2 <- 1 / (1 + spots_tna/2)^(meses2/6)
+names(fd2) <- paste0("d", meses2, "m")
+
+cat("--- Factores de Descuento ---\n")
+print(round(fd2, 6))
+
+# --- a) Forward 18→24 meses ---
+f_eff_2 <- fd2["d18m"] / fd2["d24m"] - 1
+tna_fwd2 <- f_eff_2 * 2
+
+cat("\n--- a) Tasa Forward 18→24m ---\n")
+cat(sprintf("  Tasa efectiva 6m del forward : %.4f%%\n", f_eff_2*100))
+cat(sprintf("  TNA cap. semestral           : %.4f%%\n", tna_fwd2*100))
+
+# --- b) Valor del FRA (recibe 6% TNA = 3% eff, paga mercado) ---
+nocional2 <- 1e6
+r_fra2    <- 0.06 / 2  # tasa fija eff 6m
+
+flujo_fra2 <- (r_fra2 - f_eff_2) * nocional2  # positivo porque fija > forward
+valor_fra2  <- flujo_fra2 * fd2["d24m"]
+
+cat("\n--- b) Valor del FRA ---\n")
+cat(sprintf("  Tasa fija (eff 6m)    : %.4f%%\n", r_fra2*100))
+cat(sprintf("  Tasa mercado (eff 6m) : %.4f%%\n", f_eff_2*100))
+cat(sprintf("  Flujo en t=24m        : $%s\n", format(round(flujo_fra2,2), big.mark=",")))
+cat(sprintf("  Valor FRA hoy         : $%s\n", format(round(valor_fra2,2), big.mark=",")))
+
+# --- c) Arbitraje ---
+# EF recibe 6% fijo, paga mercado
+# Hedge: prestar 18m + pedir prestado 24m para crear "pagar flotante, recibir 5.754%"
+A2 <- nocional2 / (1 + spots_tna["s18"]/2)^3
+
+ganancia2_t24 <- (r_fra2 - f_eff_2) * nocional2
+pv_ganancia2  <- ganancia2_t24 * fd2["d24m"]
+
+cat("\n--- c) Arbitraje ---\n")
+cat(sprintf("  Operaciones en t=0:\n"))
+cat(sprintf("    Prestar        $%s por 18m al 4.75%% TNA\n", format(round(A2,2), big.mark=",")))
+cat(sprintf("    Pedir prestado $%s por 24m al 5.00%% TNA\n", format(round(A2,2), big.mark=",")))
+cat(sprintf("  En t=18m: recibir $1M, prestar al mercado por 6m\n"))
+cat(sprintf("  Ganancia risk-free en t=24m: $%s\n", format(round(ganancia2_t24,2), big.mark=",")))
+cat(sprintf("  PV de la ganancia hoy      : $%s\n", format(round(pv_ganancia2,2), big.mark=",")))
+
+cat("\n--- d) FALSO ---\n")
+cat("  La primera parte es correcta (valuamos asumiendo que la forward\n")
+cat("  se realizará), pero la razón es incorrecta. La forward no es\n")
+cat("  necesariamente E[spot]. La justificación es el NO-ARBITRAJE.\n\n")
+
+
+# ============================================================
+# EJERCICIO 3 — Swap de tasas (mismas tasas que Ej.2)
+# ============================================================
+cat("═══ EJERCICIO 3 — Swap de Tasas ═══════════════════════\n\n")
+
+# FDs para 6, 12, 18 meses (de ejercicio 2)
+fd3 <- fd2[c("d6m","d12m","d18m")]
+nocional3  <- 1e6
+tasa_fija3 <- 0.046  # TNA cap semi → 2.3% por período
+
+# Tasas forward por período
+f_01 <- spots_tna["s6"]  / 2                    # f(0→6): spot 6m eff
+f_12 <- fd3["d6m"]  / fd3["d12m"] - 1           # f(6→12)
+f_23 <- fd3["d12m"] / fd3["d18m"] - 1           # f(12→18)
+
+fwd_rates <- c(f_01, f_12, f_23)
+periodos3  <- c("0→6m","6→12m","12→18m")
+
+cat("--- Tasas forward por período ---\n")
+tabla3 <- data.frame(
+  Período     = periodos3,
+  Fwd_eff_6m  = paste0(round(fwd_rates*100, 4), "%"),
+  Flujo_flot  = paste0("$", format(round(fwd_rates*nocional3, 2), big.mark=","))
+)
+print(tabla3, row.names=FALSE)
+
+# --- a) Valor del swap (paga fijo, recibe flotante) ---
+# Método 1: bono flotante - bono fijo
+flujo_fijo   <- c(tasa_fija3/2 * nocional3,
+                  tasa_fija3/2 * nocional3,
+                  tasa_fija3/2 * nocional3 + nocional3)
+flujo_float  <- fwd_rates * nocional3
+
+pv_fijo  <- sum(flujo_fijo  * as.numeric(fd3))
+pv_float <- nocional3  # bono flotante siempre vale par
+
+valor_swap3 <- pv_float - pv_fijo
+
+cat("\n--- a) Valor del Swap (paga 4.6% fijo, recibe flotante) ---\n")
+cat(sprintf("  PV bono fijo (incl. VN) : $%s\n", format(round(pv_fijo,2),  big.mark=",")))
+cat(sprintf("  PV bono flotante        : $%s\n", format(round(pv_float,2), big.mark=",")))
+cat(sprintf("  Valor del swap          : $%s\n", format(round(valor_swap3,2), big.mark=",")))
+
+# --- b) Tasa del swap si se acordase hoy ---
+sum_fd3   <- sum(as.numeric(fd3))
+c_semi    <- (1 - as.numeric(fd3["d18m"])) / sum_fd3
+tna_swap3 <- c_semi * 2
+
+cat("\n--- b) Tasa swap si se acordase hoy ---\n")
+cat(sprintf("  c_semestral : %.4f%%\n", c_semi*100))
+cat(sprintf("  TNA         : %.4f%%\n", tna_swap3*100))
+cat("\n")
+
+
+# ============================================================
+# EJERCICIO 4 — Forward sobre acción (TNA simple)
+# ============================================================
+cat("═══ EJERCICIO 4 — Forward sobre Acción ════════════════\n\n")
+
+S0_4 <- 75
+r4   <- 0.08
+T4   <- 0.5
+
+# --- a) ---
+F0_4 <- S0_4 * (1 + r4 * T4)
+
+cat("--- a) Precio Forward y Valor Inicial ---\n")
+cat(sprintf("  F = S₀ × (1 + r×T) = %g × (1 + %.2f × %.1f) = $%.4f\n",
+            S0_4, r4, T4, F0_4))
+cat("  Valor inicial del contrato (long o short) = $0\n\n")
+
+# --- b) ---
+S1_4  <- 80
+r4b   <- 0.08
+T4b   <- 4/12  # tiempo restante
+
+F1_4 <- S1_4 * (1 + r4b * T4b)
+disc4b <- 1 / (1 + r4b * T4b)
+V_long  <-  (F1_4 - F0_4) * disc4b
+V_short <- -(F1_4 - F0_4) * disc4b
+
+cat("--- b) 2 meses después ---\n")
+cat(sprintf("  Nuevo forward price  F' = $%.4f\n", F1_4))
+cat(sprintf("  Valor contrato LONG     = $%.4f\n", V_long))
+cat(sprintf("  Valor contrato SHORT    = $%.4f\n", V_short))
+cat("\n")
+
+
+# ============================================================
+# EJERCICIO 5 — Bonos, FRAs y Swaps (curva mensual TNA)
+# ============================================================
+cat("═══ EJERCICIO 5 — Curva Mensual ════════════════════════\n\n")
+
+meses5 <- 1:12
+tasas5 <- c(4.05,4.25,4.85,5.25,5.50,5.80,5.95,6.15,6.35,6.80,6.95,7.05)/100
+
+# FD = 1/(1 + r × t/12)  [capitalización simple]
+fd5 <- 1 / (1 + tasas5 * meses5/12)
+names(fd5) <- paste0("d", meses5, "m")
+
+# --- a) Bono bimestral ---
+VN5    <- 100
+cup5   <- 0.05 / 6 * VN5  # 5% anual / 6 pagos por año = cada 2 meses
+meses_pago5 <- c(2, 4, 6, 8)
+flujos5 <- rep(cup5, 4)
+flujos5[4] <- flujos5[4] + VN5
+
+precio5 <- sum(flujos5 * fd5[paste0("d", meses_pago5, "m")])
+
+cat("--- a) Precio del Bono ---\n")
+tabla5a <- data.frame(
+  Mes    = meses_pago5,
+  Flujo  = round(flujos5, 4),
+  FD     = round(fd5[paste0("d", meses_pago5, "m")], 6),
+  PV     = round(flujos5 * fd5[paste0("d", meses_pago5, "m")], 4)
+)
+print(tabla5a, row.names=FALSE)
+cat(sprintf("\n  Precio = $%.4f\n\n", precio5))
+
+# --- b) FRA 3×12 ---
+nocional5 <- 10e6
+spread5   <- 0.0115
+
+fd3m  <- fd5["d3m"]
+fd12m <- fd5["d12m"]
+ff5   <- fd3m / fd12m  # = 1 + f × 9/12
+f_fra5 <- (ff5 - 1) * 12/9  # TNA forward 9m
+
+costo_total5 <- f_fra5 + spread5
+
+cat("--- b-i) FRA 3×12 ---\n")
+cat(sprintf("  FD(3m)           : %.6f\n", fd3m))
+cat(sprintf("  FD(12m)          : %.6f\n", fd12m))
+cat(sprintf("  Tasa forward 9m  : %.4f%%\n", f_fra5*100))
+cat(sprintf("  Costo fijo total : %.4f%%\n", costo_total5*100))
+
+# b-ii) Verificación
+libor_real <- 0.0625
+interes5   <- (libor_real + spread5) * 9/12 * nocional5
+pago_fra5  <- (f_fra5 - libor_real) * 9/12 * nocional5
+costo_neto5 <- interes5 + pago_fra5
+
+cat("\n--- b-ii) Verificación con LIBOR=6.25% ---\n")
+cat(sprintf("  Interés del préstamo : $%s\n", format(round(interes5,2), big.mark=",")))
+cat(sprintf("  Pago/cobro del FRA   : $%s\n", format(round(pago_fra5,2), big.mark=",")))
+cat(sprintf("  Costo neto total     : $%s\n", format(round(costo_neto5,2), big.mark=",")))
+cat(sprintf("  Equivalente a        : %.4f%% TNA ✓\n",
+            (costo_neto5/nocional5)*(12/9)*100))
+
+# --- c) Swap mensual 6 meses ---
+fd_6meses <- fd5[paste0("d", 1:6, "m")]
+sum_fd5c  <- sum(fd_6meses)
+c_mensual <- (1 - fd5["d6m"]) / sum_fd5c
+tna_swap5 <- c_mensual * 12
+
+cat("\n--- c) Tasa fija del Swap (6 meses, pagos mensuales) ---\n")
+cat(sprintf("  Σ FD(1m..6m)   : %.6f\n", sum_fd5c))
+cat(sprintf("  c_mensual      : %.4f%%\n", c_mensual*100))
+cat(sprintf("  TNA            : %.4f%%\n", tna_swap5*100))
+cat("\n")
+
+
+# ============================================================
+# EJERCICIO 6 — Forward continuo
+# ============================================================
+cat("═══ EJERCICIO 6 — Forward Continuo ═════════════════════\n\n")
+
+S6a <- 40
+r6  <- 0.10
+T6  <- 1.0
+
+# --- a) ---
+F6a <- S6a * exp(r6 * T6)
+
+cat("--- a) ---\n")
+cat(sprintf("  F = S₀ × e^(r×T) = %g × e^(%.2f×%.0f) = $%.4f\n", S6a, r6, T6, F6a))
+cat("  Valor inicial = $0\n\n")
+
+# --- b) ---
+S6b  <- 45
+T6b  <- 0.5  # tiempo restante
+
+F6b <- S6b * exp(r6 * T6b)
+V6b <- (F6b - F6a) * exp(-r6 * T6b)
+# Alternativa: S - F*e^(-rT')
+V6b_alt <- S6b - F6a * exp(-r6 * T6b)
+
+cat("--- b) 6 meses después ---\n")
+cat(sprintf("  Nuevo forward F' = $%.4f\n", F6b))
+cat(sprintf("  Valor LONG = (F'−F) × e^(−rT') = $%.4f\n", V6b))
+cat(sprintf("  Verificación alt. = $%.4f\n", V6b_alt))
