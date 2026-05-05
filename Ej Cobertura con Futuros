@@ -1,0 +1,182 @@
+---
+title: "Cobertura de Riesgo de Mercado con Futuros sobre Índices"
+output: html_notebook
+---
+
+##### **Usted se encuentra operando en dos economías. La cartera que tiene armada en la economía B tiene un beta igual a $\beta_c = 1.2$, con un valor nominal $P = 10.000$. Decide _no estar expuesto al riesgo de mercado_ de la economía B durante los próximos tres meses.**
+
+##### **Se negocian contratos _futuros sobre el índice de mercado_ en esa economía, con $\beta_F = 0.95$. El valor del índice hoy es 156 y _cada contrato de futuro paga 25 veces_ el valor del índice.**
+
+##### **Los futuros con vencimiento a 4 meses se negocian a valor teórico.**
+
+##### **- Tasa libre de riesgo (TNA, capitalización trimestral): $r = 0.08$**
+##### **- Tasa de dividendos (TNA, capitalización trimestral): $q = 0.04$**
+
+Transformación a tasas trimestrales:
+
+$$
+r^{(4)} = r/4
+$$
+$$
+q^{(4)} = q/4
+$$
+
+```{r, echo=FALSE}
+r_trimestral <- 0.08 / 4
+q_trimestral <- 0.04 / 4
+cat("r_4 = ", r_trimestral, "\nq_4 =", q_trimestral )
+```
+
+Además, 
+$$
+{\beta_c} = 1{,}2
+$$
+$$
+VN = P = 10.000
+$$
+$$
+{\beta_F} = 0{,}95
+$$
+Cálculo del valor actual del índice:
+$$
+S_0 = 156 \cdot \ 25 = 3.900
+$$
+
+```{r, echo=FALSE}
+indice_hoy <- 156
+multiplicador <- 25
+S_0 <- indice_hoy * multiplicador
+```
+
+##### **A) Si quisiera eliminar el riesgo de mercado de la economía B, ¿qué posición debería tomar?**
+
+Como quieremos eliminar el riesgo, $$\beta^* = 0$$ debo reducir el beta. Entonces, tendremos que vender futuros a 4 meses sobre indices (tomar una posicion short).
+Al eliminarse el riesgo de mercado, la cartera deberia no ser sensible ante movimientos del mismo. Y el rendimiento deberia ser igual (o aproximadamente igual) a la tasa libre de riesgo (r).
+
+¿Cuántos contratos de futuros debería vender? Eso debo calcularlo. Para ello, necesitamos el valor del futuro: 
+$$
+F_0 = S_0 \cdot \frac{(1 + r^{(4)})^{4/3}}{(1 + q^{(4)})^{4/3}}
+$$
+_Nota - Equivalencia de tasas: Quiero no exponerme a riesgo de mercado por 3 meses, pero los futuros son a 4 meses._ 
+
+```{r, echo=FALSE}
+F_0 <- S_0 * ((1 + r_trimestral)^(4/3)) / ((1 + q_trimestral)^(4/3))
+cat("El valor teórico del contrato futuro es: ", round(F_0, 2), "\n")
+```
+
+Ahora sí, calculamos la cantidad de contratos de futuros a comprar/vender:
+
+$$
+N_F = \frac{P}{F_0} \cdot \frac{\beta^* - \beta_c}{\beta_F}
+$$
+
+```{r, echo=FALSE}
+P <- 10000
+beta_c <- 1.2
+beta_F <- 0.95
+beta_star <- 0
+
+N_F <- (P / F_0) * ((beta_star - beta_c) / beta_F)
+cat("Se deben vender", round(-N_F), "contratos de futuros sobre el índice.\n")
+```
+
+##### **B) ¿Cómo funcionaría la cobertura si dentro de tres meses el valor del índice es 150 y el contrato de futuro cotiza a 25 · 151?**
+
+$$
+S_3 = 150 \cdot \ 25 = 3.750
+$$
+$$
+F_3 = 151 \cdot \ 25 = 3.775
+$$
+
+```{r, echo=FALSE}
+S_3 <- 150 * multiplicador
+F_3 <- 151 * multiplicador
+```
+
+Ganancia o pérdida por la posición en futuros:
+
+$$
+\text{Resultado futuros} = (F_3 - F_0) \cdot N_F
+$$
+
+```{r, echo=FALSE}
+resultado_futuros <- (F_3 - F_0) * N_F
+cat("Resultado por futuros: ", round(resultado_futuros, 2), "\n")
+```
+
+$$
+\text{Resultado cartera original} = P \cdot r_c^T
+$$
+Donde, el Rendimiento Total Cartera:
+$$
+r_c^T = \beta_c \cdot (r_m^T - r^{(4)}) + r^{(4)} = \beta_c \cdot ((r_m^c + r_m^d) - r^{(4)}) + r^{(4)}
+$$
+Se aprecia que el rendimiento total de mercado es la suma entre el rendimiento de capital de mercado y el rendimiento de dividendos de mercado. Luego, 
+Rendimiento de Capital:
+$$
+r_m^c = \frac{S_3}{S_0} - 1
+$$
+Rendimiento de Dividendos:
+$$
+r_m^d = q^{(4)}
+$$
+Rendimiento de Mercado:
+$$
+r_m^T = r_m^c + r_m^d
+$$
+
+```{r, echo=FALSE}
+r_m_c <- (S_3 / S_0) - 1
+paste0("r_m_c = ", r_m_c)
+r_m_d <- q_trimestral
+paste0("r_m_d = ", r_m_d)
+r_m_T <- r_m_c + r_m_d
+paste0("r_m_Total = ", r_m_d + r_m_c)
+
+r_c_T <- beta_c * (r_m_T - r_trimestral) + r_trimestral
+paste0("r_Catera_Total = ", r_c_T)
+```
+Finalmente, 
+$$
+\text{Valor de cartera original} = P + \text{Resultado cartera original}
+$$
+$$
+\text{Rendimiento efectivo trimestral} = \frac{\text{Valor de cartera original}} P - 1 = \frac{\text{Resultado cartera original + Posición en futuros}} P
+$$
+
+```{r, echo=FALSE}
+resultado_cartera <- P * r_c_T
+paste0("Si el modelo con 'beta'm es correcto, la cartera vale = ", P*(1+r_c_T))
+paste0("El resultado (sin cobertura) es = ", resultado_cartera)
+resultado_total_cartera <- resultado_cartera + resultado_futuros
+paste0("Al agregar el resultado de futuros obtengo un resultado total (con cobertura) de = ", 
+       resultado_total_cartera)
+rendimiento_total <- resultado_total_cartera / P
+cat("Rendimiento efectivo trimestral total: ", round(rendimiento_total * 100, 2), "%\n")
+```
+¿La cobertura funcionó?
+Queríamos eliminar el riesgo de mercado, o sea, neutralizar el efecto de los movimientos del índice sobre tu cartera.
+Esto se traduce en:
+- Llevar el beta efectivo a 0.
+- Lograr que el rendimiento final de la cartera se aproxime al de la tasa libre de riesgo, que es del 2% trimestral.
+El rendimiento bajo nuestra estrategia fue de 1.83%, por lo tanto, funciona la cobertura.
+
+##### **C) ¿Podría – de alguna manera – eliminar también el riesgo de tipo de cambio? ¿Por qué nominal tomaría cobertura? ¿se eliminaría totalmente?**
+
+Sí, es posible reducir el **riesgo cambiario** utilizando contratos futuros sobre divisas. Una vez neutralizada la exposición al mercado local, se puede tomar una **posición *short* en futuros de divisas** por el **valor nominal esperado** en 3 meses.
+
+El valor esperado a cubrir es:
+$$
+\text{VN esperado} = P \cdot (1 + r^{(4)}) = 10.000 \cdot (1 + 0.02) = 10.200
+$$
+```{r, echo=FALSE}
+VN_esperado <- P * (1 + r_trimestral)
+VN_esperado
+```
+
+**Conclusión:**  
+Aunque esta estrategia reduce el riesgo cambiario, **no lo elimina completamente**, ya que:
+- Los betas usados son estimaciones teóricas.
+- El rendimiento real puede diferir de la tasa libre de riesgo.
+- El valor nominal cubierto es una **aproximación esperada**, no exacta.
