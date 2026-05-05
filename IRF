@@ -1,0 +1,161 @@
+# Ejercicio 1: Cálculo de tasas de interés - Bonos Zero Coupon
+# ============================================================
+
+# --- Datos ---
+valor_nominal <- 1000
+periodos <- 1:4
+precios <- c(945, 890, 835, 785)
+
+# --- 1. Factores de descuento ---
+d <- precios / valor_nominal
+
+# --- 2. Tasas spot ---
+spot <- (1 / d)^(1 / periodos) - 1
+
+# --- 3. Tasas forward ---
+# f(0→1) es igual a la spot del período 1
+# f(t-1→t) = d(t-1) / d(t) - 1
+d_lag <- c(1, d[-length(d)])  # d_0 = 1 (valor presente de $1 hoy)
+forward <- d_lag / d - 1
+
+# --- 4. Tasa par a 4 años ---
+# c = 100 * (1 - d_T) / sum(d_1 ... d_T)
+tasa_par <- 100 * (1 - d[4]) / sum(d)
+
+# --- Resultados ---
+resultados <- data.frame(
+  Periodo          = periodos,
+  Precio           = precios,
+  Factor_Descuento = round(d, 4),
+  Tasa_Spot        = paste0(round(spot * 100, 2), "%"),
+  Tasa_Forward     = paste0(round(forward * 100, 2), "%")
+)
+
+cat("====================================================\n")
+cat("        TASAS DE INTERÉS - ZERO COUPON BONDS\n")
+cat("====================================================\n\n")
+print(resultados, row.names = FALSE)
+
+cat("\n----------------------------------------------------\n")
+cat(sprintf("  Tasa PAR a 4 años: %.2f%%\n", tasa_par))
+cat("----------------------------------------------------\n")
+
+# ============================================================
+# Ejercicio 2: Valuación de bono bullet - tasas discretas
+# Bono: VN=$100, 4 años, cupón anual 7%, FD del ejercicio 1
+# ============================================================
+
+# --- Datos ---
+VN        <- 100
+cupon     <- 0.07 * VN          # $7 por período
+periodos  <- 1:4
+d         <- c(0.9450, 0.8900, 0.8350, 0.7850)  # FD del ejercicio 1
+
+# Flujos de caja: cupones + devolución de capital en t=4
+flujos <- c(rep(cupon, 3), cupon + VN)
+
+# --- a) Precio del bono ---
+PV_flujos <- flujos * d
+precio    <- sum(PV_flujos)
+
+cat("--- a) Precio del bono ---\n")
+tabla2 <- data.frame(
+  t        = periodos,
+  Flujo    = flujos,
+  FD       = d,
+  PV_Flujo = round(PV_flujos, 2)
+)
+print(tabla2, row.names = FALSE)
+cat(sprintf("\n  Precio = $%.2f\n\n", precio))
+
+# --- b) Duration de Macaulay ---
+# D = sum(t * PV(CF_t)) / Precio
+duration <- sum(periodos * PV_flujos) / precio
+
+# Duration Modificada (usada para la aproximación)
+# Necesitamos la YTM para calcularla en forma discreta
+# Usamos la tasa par del ejercicio 1 como proxy de la YTM
+# O mejor: calculamos la YTM numéricamente
+ytm <- uniroot(
+  function(y) sum(flujos / (1 + y)^periodos) - precio,
+  interval = c(0.001, 0.5)
+)$root
+
+dur_modificada <- duration / (1 + ytm)
+
+cat("--- b) Duration ---\n")
+cat(sprintf("  Duration de Macaulay : %.4f años\n", duration))
+cat(sprintf("  YTM implícita        : %.4f%%\n", ytm * 100))
+cat(sprintf("  Duration Modificada  : %.4f\n\n", dur_modificada))
+
+# --- c) Nuevo precio ante suba de 1pp en la tasa ---
+delta_y      <- 0.01
+delta_precio <- -dur_modificada * delta_y * precio
+precio_nuevo <- precio + delta_precio
+
+cat("--- c) Nuevo precio ante suba de tasa de +1pp ---\n")
+cat("  Aproximación por Duration Modificada:\n")
+cat(sprintf("  ΔP ≈ −DurMod × Δy × P = −%.4f × %.2f × $%.4f\n",
+            dur_modificada, delta_y, precio))
+cat(sprintf("  ΔP ≈ $%.4f\n", delta_precio))
+cat(sprintf("  Precio nuevo ≈ $%.4f\n\n", precio_nuevo))
+
+
+# ============================================================
+# Ejercicio 3: Valuación de bono bullet - tasa continua (Hull)
+# Bono: VN=$100, 3 años, cupón 10% anual semestral, r=12% continuo
+# ============================================================
+
+# --- Datos ---
+VN3       <- 100
+r         <- 0.12              # tasa continua anual
+cupon3    <- 0.10 * VN3 / 2    # $5 cada semestre
+tiempos   <- seq(0.5, 3, by = 0.5)  # 6 períodos semestrales
+flujos3   <- c(rep(cupon3, 5), cupon3 + VN3)
+
+# --- a) Precio del bono ---
+# Con tasa continua: PV = CF * e^(-r*t)
+PV3       <- flujos3 * exp(-r * tiempos)
+precio3   <- sum(PV3)
+
+cat("--- a) Precio del bono ---\n")
+tabla3 <- data.frame(
+  t        = tiempos,
+  Flujo    = flujos3,
+  FD_cont  = round(exp(-r * tiempos), 6),
+  PV_Flujo = round(PV3, 4)
+)
+print(tabla3, row.names = FALSE)
+cat(sprintf("\n  Precio = $%.4f\n\n", precio3))
+
+# --- b) Duration de Macaulay (con tasa continua) ---
+# Con compounding continuo, DurMod = DurMacaulay
+duration3 <- sum(tiempos * PV3) / precio3
+
+cat("--- b) Duration ---\n")
+cat(sprintf("  Duration de Macaulay : %.4f años\n", duration3))
+cat("  (Con tasa continua: Duration Modificada = Duration Macaulay)\n\n")
+
+# --- c) Nuevo precio ante suba de +1pp ---
+delta_y3       <- 0.01
+delta_precio3  <- -duration3 * delta_y3 * precio3
+precio_nuevo3  <- precio3 + delta_precio3
+
+cat("--- c) Nuevo precio ante suba de tasa de +1pp ---\n")
+cat("  Aproximación por Duration:\n")
+cat(sprintf("  ΔP ≈ −D × Δy × P = −%.4f × %.2f × $%.4f\n",
+            duration3, delta_y3, precio3))
+cat(sprintf("  ΔP ≈ $%.4f\n", delta_precio3))
+cat(sprintf("  Precio nuevo ≈ $%.4f\n\n", precio_nuevo3))
+
+# --- d) Nuevo precio ante baja de -1pp ---
+delta_y3d      <- -0.01
+delta_precio3d <- -duration3 * delta_y3d * precio3
+precio_nuevo3d <- precio3 + delta_precio3d
+
+cat("--- d) Nuevo precio ante baja de tasa de -1pp ---\n")
+cat("  Aproximación por Duration:\n")
+cat(sprintf("  ΔP ≈ −D × Δy × P = −%.4f × (%.2f) × $%.4f\n",
+            duration3, delta_y3d, precio3))
+cat(sprintf("  ΔP ≈ $%.4f\n", delta_precio3d))
+cat(sprintf("  Precio nuevo ≈ $%.4f\n\n", precio_nuevo3d))
